@@ -3,4 +3,4 @@ For people who are able to fix the bugs themselves, and who aren't willing to bu
 
 To use the program, run the L5K Viewer.py, and probably it'll go ahead and open up the windows its supposed to open. There's a button in the main window for you to select and open an L5K file. 
 
-This was written using whatever version of python was latest when I installed python a couple of months ago (October 2023).
+This was written using whatever version of python was latest when I installed python a couple of months ago (October 2023). It makes use of TKinter.
