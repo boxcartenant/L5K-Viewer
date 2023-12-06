@@ -106,7 +106,6 @@ class SecondWindow:
         
         def get_local_occurrences(tag_name, scope_name, scope_routines):
             occurrences = []
-            #print(scope_routines)
             for routine_name, routine_lines in scope_routines.items():
                 rung = 0
                 for idx, line in enumerate(routine_lines):
@@ -131,21 +130,16 @@ class SecondWindow:
                     elif line[0] == "N:":
                         #Ladder rungs consist of nested lists in line[1]
                         def xref_my_ladder(routine_name, rung, idx, tag_name, line, depth=0):
-                            #print ("xref_my_ladder depth:", depth)
                             found_instances = []
                             for item in line:
                                 if isinstance(item, Instruction):
                                     #if item is an instruction, check its elements for tag_name and add dictionary to found_instances.
-                                    #if "AUTO_CYCLE_BOX" in item.args:
-                                    #    print(tag_name, item, tag_name in item.args)
                                     if tag_name in item.args:
                                         found_instances.append({'Scope': scope_name, 'Routine': routine_name, 'RungSheet': rung, 'Index': idx, 'Instruction': item})
                                 elif isinstance(item, list):
                                     #if item is a list, recursively call xref_my_ladder and add results to found_instances.
                                     for found_thing in xref_my_ladder(routine_name, rung, idx, tag_name, item, depth+1):
                                         found_instances.append(found_thing)
-                            #if found_instances != []:
-                            #    print(found_instances)
                             return found_instances
                         for found_thing in xref_my_ladder(routine_name, rung, idx, tag_name, line[1]):
                             occurrences.append(found_thing)
@@ -250,7 +244,7 @@ class NavigationTree:
         self.open_button.grid(row=0, column=0, sticky="nsew") #button to open new files
 
         # Create a tree view
-        self.tree = ttk.Treeview(self.tree_frame)
+        self.tree = ttk.Treeview(self.tree_frame, show='tree')
         self.tree.grid(row=1, column=0, sticky="nsew")
 
         vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
@@ -261,12 +255,19 @@ class NavigationTree:
         
         self.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
+
+        self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
+
+    def on_sash_drag(self,event):
+        # Get the new sash position
+        new_sash_position = event.x
+        self.tree_frame.columnconfigure(0, weight=1)
+        self.tree_frame.configure(width=new_sash_position)
+        self.tree.column("#0", width=new_sash_position)
         
     def populate_tree(self, data, parent_id):
         for key, value in data.items():
             item_id = self.tree.insert(parent_id, 'end', text=key, iid=parent_id+"/"+key)
-            #print(item_id)
-            #print(str(parent_id)+"/"+str(key))
             self.tree_item_data[item_id] = value  # Store the associated data
             if (parent_id.split('/')[-1] == "MODULES" or key == "TAGS" or key == "PARAMETERS" or parent_id.split('/')[-1] == "DATATYPES"):
                 1;
@@ -284,10 +285,6 @@ class NavigationTree:
             text_width = self.treeFont.measure(self.tree.item(item_id, 'text').strip())
             tab_width = self.tree.bbox(item_id, column="#0")[0]  # Get the width of the last column
             content_width = text_width+tab_width
-            #print(self.tree.bbox(item_id, column="#0"))
-            #print(str(text_width) + ", " + str(tab_width) + ", " + str(self.tree.winfo_width()))
-            #print(self.tree.item(item_id, 'text'))
-            #print(Font().actual())
 
             if content_width > self.tree.winfo_width():
                 self.tree.column("#0", width=content_width)  # Adjust the column width
@@ -295,7 +292,6 @@ class NavigationTree:
                 self.tree.column("#0", width=self.tree.winfo_width())  # Set the width to the visible width
 
             item_data = self.tree_item_data.get(item_id)
-            #print("sending..." + str(attributes))
             # Use the callback in the NavigationTree class to handle the canvas update
             self.tree_to_canvas_callback(item_id, item_data)
         except IndexError:
@@ -311,8 +307,6 @@ class NavigationTree:
             with open(file_path, 'r') as file:
                 content = file.readlines()
             data_model = L5K_Parse.parse_file_content(content)
-            #print("dumping output from open_file_dialog")
-            #print(data_model)
             self.populate_tree(data_model, '')
             self.window1to2callback(self, "tree", None)
         else:
@@ -365,8 +359,6 @@ class CanvasView:
         self.paned_window.add(self.canvas_frame)
 
         # Draw on the canvas (e.g., lines, rectangles, text, images)
-        #self.canvas.create_line(50, 50, 200, 50, fill="blue", width=2)
-        #self.canvas.create_rectangle(100, 100, 250, 200, fill="red")
         self.canvas.create_text(90, 125, text="L5K Viewer!", fill="green", font = self.canvasFont)
         self.photo = tk.PhotoImage(file="Assets/xic.png")
         self.image = self.canvas.create_image(50, 150, anchor=tk.NW, image=self.photo)
@@ -380,8 +372,6 @@ class CanvasView:
         clicked_text = self.canvas.itemcget(item_id, 'text')
         #------Send tag data to the second window for cross referencing
         window1to2callback(self, "tagXref", {"tag": clicked_text, "scope": scopename})
-        #print(f"Text clicked: {clicked_text}")
-        #print(f"Scope: {scopename}")
         
     def reset_scrollregion(self, event):
         self.canvas.configure(scrollregion=self.canvas.bbox("ALL"))
@@ -438,8 +428,6 @@ class CanvasView:
                     k = 1
                     lowest_y = 0
                     #----------------TO DO: Review the whole "lowest_y" usage here to verify whether single "rung" in "data" has multiple "sheets", so that we can know whether this is done appropriately
-                    #self.canvas.create_text(2, y_offset, text=str(rung_number), anchor=tk.W, font = self.canvasFont)
-                    #print("elements to draw:", len(rung[1]))
                     i = 0
                     while i < len(rung[1]):
                         elem = rung[1][i]
@@ -589,7 +577,6 @@ class CanvasView:
                                     if element.args != ['']:
                                         i = 0
                                         while i < len(element.args):
-                                            #print(element.args[i])
                                             text_object = self.canvas.create_text(x+textelbowroom, y+textlinegap+((textlineheight+textlinegap)*i), text=element.args[i], anchor=tk.NW, font = self.canvasFont)
                                             if (element.args[i][0] not in "0123456789\""): #trying to filter out text things that aren't tag names
                                                 self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object: self.on_text_click(event, item_id, item_hierarchy[-3]))
@@ -619,7 +606,6 @@ class CanvasView:
                                 max_height = max(max_height, bh)
                                 self.canvas.configure(scrollregion=self.canvas.bbox("all"))
                         if len(branches) > 0:
-                            #tallest = branches[-1].h
                             longest = max(branches, key=lambda testbranch: testbranch.l).l + space_between_elements
                             #----------------DRAW end-of-branch vertical WIRES HERE-----------------------
                             self.canvas.create_line(longest, y+wiregap, longest, branches[-1].y+wiregap)
@@ -649,14 +635,7 @@ class CanvasView:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
-        #canvas_width = self.canvas.winfo_reqwidth()
-        #canvas_height = self.canvas.winfo_reqheight()
-        #print("width, height", canvas_width, canvas_height)
-        #print("x_offset, y_offset", x_offset, y_offset)
-        #try: #this will work if x_offset is set, which is the case when we are drawing ladders.
-        #    self.canvas.config(scrollregion=(0, 0, x_offset, y_offset+40))
-        #except:
-        #    self.canvas.config(scrollregion=(0, 0, canvas_width, y_offset+40))
+
         
         
 
@@ -712,6 +691,15 @@ class SecondTree:
         self.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
 
+        self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
+        
+    def on_sash_drag(self,event):
+        # Get the new sash position
+        new_sash_position = event.x
+        self.tree_frame.columnconfigure(0, weight=1)
+        self.tree_frame.configure(width=new_sash_position)
+        self.tree.column("#0", width=new_sash_position)
+
     def add_node(self, parent, text):
         self.tree.insert(parent, "end", iid=text, text=text)
         
@@ -719,24 +707,13 @@ class SecondTree:
         for key, value in data.items():
             if key not in ["ATTRIBUTES", "DATATYPES", "MODULES", "ROUTINES", "PARAMETERS"]:
                 item_id = self.tree.insert(parent_id, 'end', text=key, iid=parent_id+"/"+key)
-                #print(item_id)
-                #print(str(parent_id)+"/"+str(key))
                 self.tree_item_data[item_id] = value  # Store the associated data
-                #if (parent_id.split('/')[-1] == "MODULES" or key == "TAGS" or key == "PARAMETERS" or parent_id.split('/')[-1] == "DATATYPES"):
                 if parent_id.split('/')[-1] in ["TAGS"]:
                     1;
                 elif isinstance(value, dict) and value:
                     self.populate_tree(value, item_id)
                 
-        #for key, value in data.items():
-        #    if key not in ["ATTRIBUTES", "DATATYPES", "MODULES", "ROUTINES"]:
-        #        item_id = self.tree.insert(parent_id, 'end', text=key, iid=parent_id+"/"+key)
-        #        #print(str(parent_id)+"/"+str(key))
-        #        self.tree_item_data[item_id] = value  # Store the associated data
-        #        if (parent_id.split('/')[-1] == "TAGS"):
-        #            1;
-        #        elif isinstance(value, dict) and value:
-        #            self.populate_tree(value, item_id)
+
 
     def on_tree_item_click(self, event):
         try:
@@ -749,10 +726,6 @@ class SecondTree:
             text_width = self.treeFont.measure(self.tree.item(item_id, 'text').strip())
             tab_width = self.tree.bbox(item_id, column="#0")[0]  # Get the width of the last column
             content_width = text_width+tab_width
-            #print(self.tree.bbox(item_id, column="#0"))
-            #print(str(text_width) + ", " + str(tab_width) + ", " + str(self.tree.winfo_width()))
-            #print(self.tree.item(item_id, 'text'))
-            #print(Font().actual())
 
             if content_width > self.tree.winfo_width():
                 self.tree.column("#0", width=content_width)  # Adjust the column width
@@ -762,8 +735,6 @@ class SecondTree:
             if item_id.split('/')[-2] == "TAGS":
                 #print("cross referencing: ", item_id)
                 item_data = self.tree_item_data.get(item_id)
-                #print(item_data)
-                #print("sending..." + str(attributes))
                 # Use the callback in the NavigationTree class to handle the canvas update
                 self.tree_to_LabelList_callback(item_id, item_data) #item_id.split('/')[-3] is the scope.
         except IndexError:
@@ -805,8 +776,6 @@ class LabelList: #The name for this function, "LabelList", is an artifact from a
         self.paned_window.add(self.canvas_frame)
 
         # Draw on the canvas (e.g., lines, rectangles, text, images)
-        #self.canvas.create_line(50, 50, 200, 50, fill="blue", width=2)
-        #self.canvas.create_rectangle(100, 100, 250, 200, fill="red")
         self.canvas.create_text(90, 125, text="L5K Viewer!", fill="green", font = self.canvasFont)
         self.photo = tk.PhotoImage(file="Assets/xic.png")
         self.image = self.canvas.create_image(50, 150, anchor=tk.NW, image=self.photo)
@@ -880,13 +849,9 @@ if __name__ == "__main__":
 
     
     def window1to2callback(self, calltype, data):
-        #print("window1to2callback called for", calltype)
         if calltype == "tree":
-            #print("with", data)
-            #self.window1to2callback("tree", self.data_model)
             w2.second_tree.populate_tree(data_model, '')
         elif calltype == "tagXref":
-            #print("with", data)
             w2.xrefTag(data)
         
         1;
