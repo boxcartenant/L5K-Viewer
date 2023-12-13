@@ -16,7 +16,7 @@ from tkinter import Misc
 #                       'aoi name' :
 #                       {
 #                           'PARAMETERS': {'parameter': [type, description]} #the first parameter is 'description': ["aoi description", '']
-#                           'TAGS': {'tag name' : {'type': tag_datatype, 'value': tag_value}}
+#                           'TAGS': {'tag name' : {'type': tag_datatype, 'value': tag_value}, 'description': tag_description}
 #                           'ROUTINES': {'routine name' : ["individual line"]}
 #                       }
 #                   }   
@@ -27,7 +27,7 @@ from tkinter import Misc
 #                       {
 #                           'program name' :
 #                           {
-#                              'TAGS' : {'tag name' : {'type': tag_datatype, 'value': tag_value}},
+#                              'TAGS' : {'tag name' : {'type': tag_datatype, 'value': tag_value}, 'description': tag_description},
 #                              'ROUTINES' : {'routine name' : ["individual line"]}
 #                           }
 #                       }
@@ -112,9 +112,10 @@ class SecondWindow:
                     if line[0] == "fbd":
                         #fbds have sheets with lists of elements in line[1]. The arguments for the elements include coordinates, etc.
                         sheet = 1
+
                         while sheet < len(line):
                             for instr in line[sheet]:
-                                if (tag_name in instr.name) or (tag_name in instr.args):
+                                if (tag_name in instr.name) or any(tag_name in item for item in instr.args.values()):
                                     occurrences.append({'Scope': scope_name, 'Routine': routine_name, 'RungSheet': sheet+rung, 'Index': idx, 'Instruction': instr})
                             sheet += 1
                             rung += 1
@@ -401,7 +402,7 @@ class CanvasView:
                 label_text = str(tag.strip())
                 text_object = self.canvas.create_text(10, y_offset, text=label_text, anchor=tk.W, font = self.canvasFont)
                 self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object: self.on_text_click(event, item_id, item_hierarchy[-2]))
-                label_text = "\tTYPE: {tdata['type'].strip()}\t\tVALUE: {tdata['value'].strip()}"
+                label_text = f"\tTYPE: {tdata['type'].strip()}\t\tVALUE: {tdata['value'].strip()}\t\tDESCRIPTION: {tdata['description'].strip()}"
                 self.canvas.create_text(10, y_offset+textlineheight+textlinegap, text=label_text, anchor=tk.W, font = self.canvasFont)
                 y_offset += 2*textlineheight+3*textlinegap # Increase Y offset for the next item
         elif item_hierarchy[-1] == "PARAMETERS":
@@ -544,6 +545,37 @@ class CanvasView:
                         if height < 20:
                             height = 20
                         return width, height, textlineheight, image_width, photo_image
+
+                    def getTagDescription(checkTag, itemHierarchy):
+                        #returns the tag description for a given tag name or returns None
+                        global data_model
+                        if checkTag.replace('"','').strip()[0] in '0123456789':
+                            #tag names cannot start with a number.
+                            return None
+                        #first check local tags (e.g. AOI or Program tags)
+                        TAGS = None
+                        #every section in data_model that has "ROUTINES" also has "TAGS" at the same level in the hierarchy
+                        #(this is a prank I'm playing on some future troubleshooter who wants to update the data_model)
+                        if itemHierarchy[2] == 'TASKS':
+                            TAGS = data_model[itemHierarchy[1]]['TASKS'][itemHierarchy[3]][itemHierarchy[4]]['TAGS']
+                        elif itemHierarchy[2] == 'AOI':
+                            TAGS = data_model[itemHierarchy[1]]['AOI'][itemHierarchy[3]]['TAGS']
+                        if TAGS is not None:
+                            tag_description = next((value['description'] for key, value in TAGS.items() if checkTag in key), None)
+                            if tag_description is not None and tag_description.strip() in ['','N/A','\n','\t']:
+                                #Don't show garbage tag descriptions
+                                return None
+                            if tag_description is not None:
+                                return tag_description.replace('$N',' ')
+                        #now check controller tags
+                        TAGS = data_model[itemHierarchy[1]]['TAGS']
+                        tag_description = next((value['description'] for key, value in TAGS.items() if checkTag in key), None)
+                        if tag_description is not None:
+                            tag_description = tag_description.replace('$N',' ')
+                            if tag_description.strip() in ['','N/A','\n','\t']:
+                                #Don't show garbage tag descriptions
+                                return None
+                        return tag_description
                     
                     def draw_ladder(parsed_elements, x, y):
                         max_height = 0
@@ -551,7 +583,8 @@ class CanvasView:
                         branches = []
                         space_between_elements = 30
                         text_y_offset = -20
-                        wiregap = space_between_elements/2
+                        #"wiregap" brings the wire to the midpoint between elements (for vertical lines), and the midpoint of my png elements (for horizontal lines)
+                        wiregap = space_between_elements/2 
                         global textlinegap
                         global textelbowroom
                         is_branch_group = False
@@ -581,28 +614,63 @@ class CanvasView:
                                     element_width += 2*textelbowroom
                                     
                                     self.canvas.create_line(x+element_width,y+wiregap,x+element_width+space_between_elements,y+wiregap)
-                                    
+
+                                #Print tag descriptions below instructions
+                                
+                                if element.args != ['']:
+                                    description_lines = 1 #starts at 1 to offset the first line
+                                    for tag_to_check in element.args:
+                                        #put a line between descriptions of different tags:
+                                        if description_lines > 1:
+                                            self.canvas.create_text(x,y+element_height+textlinegap+(textlinegap+textlineheight)*description_lines,text="- - - -", anchor=tk.W, font=self.commentFont)
+                                            #that line is a line in the description text block, so increment description_lines
+                                            description_lines += 1
+                                        tag_description = getTagDescription(tag_to_check, item_hierarchy)
+                                        #print descriptions for tags
+                                        if tag_description is not None:
+                                            textToPrint = ''
+                                            for c in tag_description.split(' '):
+                                                cwidth = self.commentFont.measure(str(textToPrint)+ " " + c) + textelbowroom
+                                                if cwidth < element_width:
+                                                    textToPrint += " " + c
+                                                else:
+                                                    self.canvas.create_text(x,y+element_height+(textlinegap+textlineheight)*description_lines,text=textToPrint, anchor=tk.W, font=self.commentFont)
+                                                    description_lines += 1
+                                                    textToPrint = c
+                                            self.canvas.create_text(x,y+element_height+textlinegap+(textlinegap+textlineheight)*description_lines,text=textToPrint, anchor=tk.W, font=self.commentFont)
+                                            description_lines += 1
+                                    element_height += textlinegap+(textlinegap+textlineheight)*description_lines
+                                
                                 self.canvas.configure(scrollregion=self.canvas.bbox("all"))
                                 x += element_width
                                 max_height = max(max_height, y+element_height)
                             elif isinstance(element, list):
+                                #if the element is a list, then it's a branch or branch group
                                 if len(branches) > 0:
+                                    #if this is a branch on a branch, then the start y is going to be the y of the lowest branch already drawn
                                     branch_y = branches[-1].h + space_between_elements
                                 else:
-                                    branch_y = y
+                                    #otherwise, the start y will be the y of this rung
+                                    branch_y = y 
                                 #------------DRAW start-of-branch WIRES HERE---------------------
+                                #vertical line to branch
                                 self.canvas.create_line(x+wiregap,y+wiregap,x+wiregap,branch_y+wiregap)
+                                #horizontal line to first element place in branch.
                                 self.canvas.create_line(x+wiregap,branch_y+wiregap,x+space_between_elements,branch_y+wiregap)
+                                #recurse to draw the new branch. the return values enable me to treat it as a single instruction for the remainder of this pass.
                                 bl, bh, bgReturn = draw_ladder(element, x, branch_y)
                                 if bgReturn: #it was a branch group, not an individual branch
                                     #------------DRAW post-branch-group horizontal WIRES HERE---------------------
+                                    #If the return value indicates this was a branch group, then draw a wire from the branch group to the next instruction.
                                     self.canvas.create_line(bl,y+wiregap,bl+space_between_elements,y+wiregap)
                                     x = bl#+space_between_elements
                                 else: #it was a branch in a group
+                                    #if the return value indicates this was a single branch, then just append it to the list.
                                     branches.append(Branch(l=bl, h=bh, y=branch_y, x=x))
                                 max_height = max(max_height, bh)
                                 self.canvas.configure(scrollregion=self.canvas.bbox("all"))
                         if len(branches) > 0:
+                            #If more than one branch was found in this pass, then close the branches
                             longest = max(branches, key=lambda testbranch: testbranch.l).l + space_between_elements
                             #----------------DRAW end-of-branch vertical WIRES HERE-----------------------
                             self.canvas.create_line(longest, y+wiregap, longest, branches[-1].y+wiregap)
@@ -611,11 +679,16 @@ class CanvasView:
                                 if branches[i].l < longest:
                                     #---------------------DRAW branch-filling horizontal WIRES HERE------------------
                                     self.canvas.create_line(branches[i].l, branches[i].y+wiregap, longest, branches[i].y+wiregap)
-                                    #canvas.lift(branchline)
                                 i += 1
                             x = longest
                             branches = []
                             is_branch_group = True
+                        #else:
+                        #THis next if-statement was previously inside the above "else". If there's a problem with shorts rendering correctly, consider putting it back.
+                        if len(parsed_elements) == 0:
+                            print("found a shorted (0 length) branch")
+                            #Update the y offset for branches with no instructions.
+                            max_height += space_between_elements*5 #hopefully enough to make it look good, without making too much space either
                         return x, max_height, is_branch_group
 
                     #draw the rung number
@@ -632,10 +705,6 @@ class CanvasView:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
-
-        
-        
-
 
 #class ButtonGrid:
 #    def __init__(self, master, data_model, paned_window):
