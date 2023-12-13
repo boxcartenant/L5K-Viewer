@@ -247,7 +247,10 @@ def parse_file_content(content):
                             tag_value = 'N/A'
                             tag_name = tagstuff[0].strip()
                             tag_datatype = tagstuff[2].strip()
-                            current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value}
+                            tag_description = 'N/A'
+                            if ("Description" in line) and (' := ' in line) and (len(line.split(' := ')) > 1):
+                                tag_description = line.split(' := ')[1]
+                            current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value, 'description': tag_description}
                         except:
                             1;
 
@@ -261,6 +264,9 @@ def parse_file_content(content):
                         if not skipGarbage:
                             parts = line.split(':')
                             tag_name = parts[0].strip()
+                            tag_description = 'N/A'
+                            if ("Description" in line) and (' := ' in line) and (len(line.split(' := ')) > 1):
+                                tag_description = line.split(' := ')[1]
                             if " OF " in line:
                                 tag_datatype = line.split(' ')[2]
                                 tag_value = "Alias" #no value for alias tags
@@ -277,7 +283,7 @@ def parse_file_content(content):
                             if ')' in line: #detect multi-line tags. Value will be on the last line.
                                 try:
                                     tag_value = line.split(')')[1].split(':=')[1][:-1].strip()
-                                    current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value}
+                                    current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value, 'description': tag_description}
                                     skipGarbage = False;
                                 except:
                                     skipGarbage = False;
@@ -285,7 +291,7 @@ def parse_file_content(content):
                             elif not skipGarbage:
                                 try:
                                     tag_value = line.split(':=')[1][:-1].strip()
-                                    current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value}
+                                    current_tags[tag_name] = {'type': tag_datatype, 'value': tag_value, 'description': tag_description}
                                 except:
                                     pass
 
@@ -375,7 +381,7 @@ def parse_file_content(content):
                         splitline = line.split(':=')
                         #inside blocks are several rows of "A := B,)"
                         current_fbd_block[1][splitline[0].strip()] = splitline[1][:-1].replace('$n','\n').strip()
-                    else:
+                    elif not (line.startswith("SheetSize") or line.startswith("SheetOrientation")):
                         print("Unhandled FBD Rung: ", line)
 
             #------------Structured Text Routine
@@ -428,7 +434,7 @@ def parse_file_content(content):
                         if label_text.replace('"','').strip() not in ["$N", ';']:
                             current_routine_data.append(["RC:",label_text.replace('$N','')])
                     getting_comment = True
-                elif line.startswith("N:"):
+                elif line.startswith("N:") or line.startswith("rN:"): #rN is for rungs being replaced. We don't care about edits.
                     getting_comment = False
                     #Logical_Rung = [
                     #                "N:",
@@ -441,7 +447,7 @@ def parse_file_content(content):
                               
                     
                     #get rid of "N:"
-                    rung = line[2:].strip()
+                    rung = line[2:].strip() #for "rN:" rungs, this takes us to ":", which will be ignored by the if-statements to follow.
                     #First we iterate through once to separate all the elements.
                     def parse_my_rung(istring, i=0):
                         current_instruction = ["",[]]
