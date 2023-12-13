@@ -386,9 +386,6 @@ class CanvasView:
 
         item_hierarchy = item.split('/')
 
-        if item == "/Arkema/TASKS/MainTask/MainProgram/ROUTINES/AO_Mapping":
-            print(item_hierarchy[-2])
-            print(data)
         if item_hierarchy[-1] == "ATTRIBUTES":
             for attribute, value in data:
                 label_text = f"{attribute.strip()}: {value.strip()}"
